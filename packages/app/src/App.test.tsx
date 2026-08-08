@@ -116,6 +116,17 @@ import { configureAppRuntime, createDefaultAppRuntime, resetAppRuntimeForTests }
 import { showAppToast } from "./lib/app-toast";
 import { createShardedTest } from "./test/shard";
 
+const scheduleMarkdownSourceEditorPreloadMock = vi.hoisted(() => vi.fn(() => vi.fn()));
+
+vi.mock("./components/LazyMarkdownSourceEditor", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./components/LazyMarkdownSourceEditor")>();
+
+  return {
+    ...actual,
+    scheduleMarkdownSourceEditorPreload: scheduleMarkdownSourceEditorPreloadMock
+  };
+});
+
 installAppTestHarness();
 
 // Vitest shards files only, so CI needs a local registration boundary to split this monolithic suite by test title.
@@ -615,6 +626,15 @@ describe("Markra workspace", () => {
     expect(shell).toHaveClass("bg-(--bg-primary)");
     expect(shell).toHaveClass("grid-rows-[minmax(0,1fr)]");
     expect(shell).toHaveClass("overscroll-none");
+  });
+
+  it("schedules source editor preloading after the visual editor is ready", async () => {
+    scheduleMarkdownSourceEditorPreloadMock.mockClear();
+
+    const { container } = renderApp();
+
+    await waitFor(() => expect(container.querySelector(".cm-editor")).toBeInTheDocument());
+    await waitFor(() => expect(scheduleMarkdownSourceEditorPreloadMock).toHaveBeenCalled());
   });
 
   it("imports local images through the native file menu without replacing manual image insertion", async () => {
@@ -6529,6 +6549,53 @@ describe("Markra workspace", () => {
     expect(screen.getByText("Updated from source mode.")).toBeInTheDocument();
     expect(screen.getByLabelText("Markdown editor")).toHaveAttribute("data-editor-engine", "codemirror");
     expect(container.querySelectorAll(".cm-markra-empty-line")).toHaveLength(1);
+  });
+
+  it("preserves the active selection and editor focus across visual and source modes", async () => {
+    const syntheticContent = "# Synthetic cursor\n\nalpha beta gamma\n\nomega";
+    mockOpenMarkdownFile({
+      content: syntheticContent,
+      name: "synthetic.md",
+      path: mockNativePath
+    });
+    renderApp();
+
+    fireEvent.keyDown(window, { key: "o", metaKey: true });
+    await expectVisibleMarkdownText("Synthetic cursor");
+
+    const visualEditor = screen.getByRole("textbox", { name: "Markdown document" });
+    const visualView = getMarkdownSourceView(visualEditor);
+    const visualCursor = syntheticContent.indexOf("beta") + 2;
+    const visualSelection = EditorSelection.single(visualCursor, syntheticContent.indexOf("alpha"));
+    act(() => {
+      visualView.dispatch({ selection: visualSelection });
+    });
+
+    await selectEditorViewMode("Source code");
+
+    const sourceEditor = await screen.findByRole("textbox", { name: "Markdown source" });
+    const sourceView = getMarkdownSourceView(sourceEditor);
+    await waitFor(() => {
+      expect(sourceView.state.selection.eq(visualSelection)).toBe(true);
+      expect(sourceEditor).toHaveFocus();
+    });
+
+    const sourceCursor = syntheticContent.indexOf("omega") + 3;
+    const sourceSelection = EditorSelection.single(sourceCursor, syntheticContent.indexOf("gamma"));
+    act(() => {
+      sourceView.dispatch({ selection: sourceSelection });
+    });
+    const requestMeasureSpy = vi.spyOn(visualView, "requestMeasure");
+    requestMeasureSpy.mockClear();
+
+    await selectEditorViewMode("Preview");
+
+    await waitFor(() => {
+      expect(visualView.state.selection.eq(sourceSelection)).toBe(true);
+      expect(visualEditor).toHaveFocus();
+      expect(requestMeasureSpy).toHaveBeenCalled();
+    });
+    requestMeasureSpy.mockRestore();
   });
 
   it("commits pending visual IME content before source mode mounts", async () => {
