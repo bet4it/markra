@@ -1,3 +1,10 @@
+## [2.5.6](https://github.com/markrahq/markra/compare/v2.5.5...v2.5.6) (2026-08-08)
+
+### Bug Fixes
+
+* **editor:** align heading block controls ([#653](https://github.com/markrahq/markra/issues/653)) ([a0b49b5](https://github.com/markrahq/markra/commit/a0b49b5b3b7f5c2a97a316c03a52a074f9720283)), closes [#650](https://github.com/markrahq/markra/issues/650)
+* **editor:** preserve selection across view modes ([#655](https://github.com/markrahq/markra/issues/655)) ([64727b1](https://github.com/markrahq/markra/commit/64727b1fa0a7ecda129afa5d71082abe3265567a)), closes [#649](https://github.com/markrahq/markra/issues/649)
+
 ## [2.5.5](https://github.com/markrahq/markra/compare/v2.5.4...v2.5.5) (2026-08-05)
 
 ### Bug Fixes
