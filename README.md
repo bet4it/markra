@@ -223,14 +223,6 @@ Thanks to everyone who has helped shape Markra through code, docs, design, testi
 
 [![Sponsors](https://raw.githubusercontent.com/murongg/sponsorskit/main/public/sponsors.svg)](https://sponsors.mrong.me/)
 
-## Star History
-
-<p align="center">
-  <a href="https://star-history.com/#markrahq/markra&Date">
-    <img alt="Markra star history chart" src="https://api.star-history.com/svg?repos=markrahq/markra&type=Date" />
-  </a>
-</p>
-
 ## License
 
 Markra is licensed under AGPL-3.0.

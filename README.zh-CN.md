@@ -223,14 +223,6 @@ Markra 并不是想替代所有 Markdown 工具。它更接近一个安静的本
 
 [![Sponsors](https://raw.githubusercontent.com/murongg/sponsorskit/main/public/sponsors.svg)](https://sponsors.mrong.me/)
 
-## Star 趋势
-
-<p align="center">
-  <a href="https://star-history.com/#markrahq/markra&Date">
-    <img alt="Markra Star 趋势图" src="https://api.star-history.com/svg?repos=markrahq/markra&type=Date" />
-  </a>
-</p>
-
 ## 许可证
 
 Markra 使用 AGPL-3.0 许可证。
