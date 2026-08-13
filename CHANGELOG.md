@@ -1,3 +1,14 @@
+## [2.6.0](https://github.com/markrahq/markra/compare/v2.5.6...v2.6.0) (2026-08-13)
+
+### Features
+
+* **ai:** add bulk model selection ([#661](https://github.com/markrahq/markra/issues/661)) ([118749d](https://github.com/markrahq/markra/commit/118749d1e78284bc05e0c9e60841c077f5d0d41b))
+* **logging:** add configurable log levels ([#660](https://github.com/markrahq/markra/issues/660)) ([66baace](https://github.com/markrahq/markra/commit/66baaced457a896c36b1584e948d606dacf4bb21)), closes [#648](https://github.com/markrahq/markra/issues/648)
+
+### Bug Fixes
+
+* **editor:** stabilize math preview scrolling ([#657](https://github.com/markrahq/markra/issues/657)) ([6fdf3d4](https://github.com/markrahq/markra/commit/6fdf3d4329b5df2f8ddac2bbee5ac3d8ef6cf2d6)), closes [#654](https://github.com/markrahq/markra/issues/654)
+
 ## [2.5.6](https://github.com/markrahq/markra/compare/v2.5.5...v2.5.6) (2026-08-08)
 
 ### Bug Fixes
