@@ -1,3 +1,13 @@
+## [2.7.0](https://github.com/markrahq/markra/compare/v2.6.0...v2.7.0) (2026-08-16)
+
+### Features
+
+* **editor:** highlight location after view switches ([#664](https://github.com/markrahq/markra/issues/664)) ([5dbf7ac](https://github.com/markrahq/markra/commit/5dbf7ace6187c5a225beb0b54c7ae9b0f4116464)), closes [#656](https://github.com/markrahq/markra/issues/656)
+
+### Bug Fixes
+
+* **app:** keep create menu inside viewport ([#666](https://github.com/markrahq/markra/issues/666)) ([f8b27f0](https://github.com/markrahq/markra/commit/f8b27f0293f6fa633134839cb30204f18747b1d3)), closes [#665](https://github.com/markrahq/markra/issues/665)
+
 ## [2.6.0](https://github.com/markrahq/markra/compare/v2.5.6...v2.6.0) (2026-08-13)
 
 ### Features
