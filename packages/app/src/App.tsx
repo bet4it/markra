@@ -179,6 +179,7 @@ import {
   type AiEditorPreviewRestoreDetail,
   type RemoteClipboardImage
 } from "@markra/editor";
+import { showCodeMirrorLocationCue } from "@markra/editor/codemirror";
 import {
   createAiAgentSessionId,
   defaultSplitVisualPanePercent,
@@ -313,6 +314,7 @@ type PendingEditorModeScroll = {
 };
 type PendingEditorModeSelection = {
   selection: EditorSelectionSnapshot;
+  showLocationCue: boolean;
   tabId: string;
   targetSurface: EditorSurface;
 };
@@ -1359,16 +1361,31 @@ function WorkspaceApp() {
   }, [activeEditorSurface, activeImageFile, activeTabId, editorMode, saveDocumentTabViewState]);
   const queueEditorModeSelection = useCallback((
     targetSurface: EditorSurface,
-    selection: EditorSelectionSnapshot | undefined
+    selection: EditorSelectionSnapshot | undefined,
+    showLocationCue = false
   ) => {
-    if (!activeTabId || !selection) return;
+    if (!activeTabId || !selection) {
+      pendingEditorModeSelectionRef.current = null;
+      return;
+    }
 
     pendingEditorModeSelectionRef.current = {
       selection,
+      showLocationCue,
       tabId: activeTabId,
       targetSurface
     };
   }, [activeTabId]);
+  useEffect(() => {
+    const pendingSelection = pendingEditorModeSelectionRef.current;
+    if (!pendingSelection) return;
+
+    // A mode-switch restore belongs to the document that queued it. Keeping it
+    // after leaving that context can replay an old selection and cue on return.
+    if (activeImageFile || pendingSelection.tabId !== activeTabId) {
+      pendingEditorModeSelectionRef.current = null;
+    }
+  }, [activeImageFile, activeTabId]);
   const queueEditorModeScroll = useCallback((targetSurface: EditorSurface) => {
     if (!activeTabId) return;
 
@@ -3647,6 +3664,9 @@ function WorkspaceApp() {
     if (nextMode === editorMode) return;
 
     const selection = captureActiveDocumentViewState();
+    // Expanding the active editor into split view keeps the same surface visible;
+    // only crossing between visual and source needs a location cue.
+    const currentSurface = editorMode === "split" ? activeEditorSurface : editorMode;
     // IME changes can still be pending in the visual surface when source mode
     // mounts, so snapshot the originating editor before changing surfaces.
     commitActiveVisualMarkdown();
@@ -3654,7 +3674,7 @@ function WorkspaceApp() {
     if (nextMode === "visual") {
       if (sourceMode) syncSourceEditsToVisualHistory();
       queueEditorModeScroll("visual");
-      queueEditorModeSelection("visual", selection);
+      queueEditorModeSelection("visual", selection, currentSurface !== "visual");
       setEditorMode("visual");
       setActiveEditorSurface("visual");
       return;
@@ -3664,7 +3684,7 @@ function WorkspaceApp() {
       updateActiveAiSelection(null);
       handleAiCommandClose();
       queueEditorModeScroll("source");
-      queueEditorModeSelection("source", selection);
+      queueEditorModeSelection("source", selection, currentSurface !== "source");
       setEditorMode("source");
       setActiveEditorSurface("source");
       return;
@@ -3677,6 +3697,7 @@ function WorkspaceApp() {
     setEditorMode("split");
     setActiveEditorSurface(sourceMode ? "source" : "visual");
   }, [
+    activeEditorSurface,
     captureActiveDocumentViewState,
     clearSideDocumentGroup,
     commitActiveVisualMarkdown,
@@ -3922,6 +3943,12 @@ function WorkspaceApp() {
           targetEditor.requestMeasure();
           targetEditor.dispatch({ selection, scrollIntoView: true });
           targetEditor.focus();
+          if (
+            pendingSelection.showLocationCue &&
+            editorPreferences.preferences.modeSwitchHighlightEnabled
+          ) {
+            showCodeMirrorLocationCue(targetEditor, selection.main.head);
+          }
           saveDocumentTabViewState(activeTabId, { selection: editorSelectionSnapshot(selection) });
           pendingEditorModeSelectionRef.current = null;
         }
@@ -3937,6 +3964,7 @@ function WorkspaceApp() {
     activeTabId,
     document.revision,
     editorMode,
+    editorPreferences.preferences.modeSwitchHighlightEnabled,
     hasOpenDocument,
     saveDocumentTabViewState,
     sourceEditorReadySequence,
