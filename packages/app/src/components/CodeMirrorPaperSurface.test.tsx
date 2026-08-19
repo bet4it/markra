@@ -9,6 +9,7 @@ import {
 import { EditorSelection, Transaction } from "@codemirror/state";
 import { EditorView, runScopeHandlers } from "@codemirror/view";
 import { markraEditorReactBridge } from "@markra/editor-react";
+import { defaultMarkdownShortcuts } from "@markra/editor";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -54,6 +55,90 @@ describe("CodeMirrorPaperSurface", () => {
 
     unmount();
     expect(onEditorReady).toHaveBeenLastCalledWith(null, view);
+  });
+
+  it("uses the configured shortcut to paste clipboard text without formatting", async () => {
+    const code = [
+      "const mockValue = items.at(0);",
+      "if (mockValue) {",
+      "  console.log(mockValue);",
+      "}",
+    ].join("\n");
+    const onEditorReady = vi.fn();
+    const readClipboardText = vi.fn().mockResolvedValue(code);
+    render(
+      <CodeMirrorPaperSurface
+        initialContent=""
+        markdownShortcuts={{
+          ...defaultMarkdownShortcuts,
+          pastePlainText: "Mod+Alt+G",
+        }}
+        onEditorReady={onEditorReady}
+        onMarkdownChange={() => {}}
+        readClipboardText={readClipboardText}
+      />,
+    );
+    const view = onEditorReady.mock.calls[0]?.[0] as EditorView;
+
+    const handled = fireEvent.keyDown(view.contentDOM, {
+      altKey: true,
+      code: "KeyG",
+      ctrlKey: true,
+      key: "g",
+    });
+
+    expect(handled).toBe(false);
+    await waitFor(() => expect(view.state.doc.toString()).toBe(code));
+    expect(readClipboardText).toHaveBeenCalledTimes(1);
+    expect(view.dom.querySelector(".markra-math-render")).toBeNull();
+    expect(view.contentDOM.textContent).toContain("const mockValue = items.at(0);");
+  });
+
+  it("lets the native V paste event provide plain text without rich conversion", async () => {
+    const onEditorReady = vi.fn();
+    const readClipboardText = vi.fn().mockResolvedValue(
+      "### Mock heading\n\nClick test: after heading",
+    );
+    render(
+      <CodeMirrorPaperSurface
+        initialContent=""
+        markdownShortcuts={defaultMarkdownShortcuts}
+        onEditorReady={onEditorReady}
+        onMarkdownChange={() => {}}
+        readClipboardText={readClipboardText}
+      />,
+    );
+    const view = onEditorReady.mock.calls[0]?.[0] as EditorView;
+
+    const handled = fireEvent.keyDown(view.contentDOM, {
+      code: "KeyV",
+      ctrlKey: true,
+      key: "V",
+      shiftKey: true,
+    });
+    const pasteEvent = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(pasteEvent, "clipboardData", {
+      value: {
+        files: Object.assign([], { item: () => null }),
+        getData: (type: string) => {
+          if (type === "text/html") return "<h3>Mock heading</h3><p>Click test: after heading</p>";
+          if (type === "text/plain") return "### Mock heading\n\nClick test: after heading";
+
+          return "";
+        },
+        types: ["text/html", "text/plain"],
+      },
+    });
+    view.contentDOM.dispatchEvent(pasteEvent);
+
+    expect(handled).toBe(true);
+    expect(pasteEvent.defaultPrevented).toBe(true);
+    expect(readClipboardText).not.toHaveBeenCalled();
+    await waitFor(() => expect(view.state.doc.toString()).toBe(
+      "\\#\\#\\# Mock heading\n\nClick test: after heading",
+    ));
+    expect(view.dom.querySelector('[role="heading"]')).toBeNull();
+    expect(view.contentDOM.textContent).toContain("### Mock heading");
   });
 
   it("reconfigures read-only state without recreating the editor view", () => {

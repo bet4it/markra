@@ -70,6 +70,23 @@ function clipboardContentPasteItem(
   );
 }
 
+function plainTextPasteItem(
+  target: Element,
+  text: string,
+  shortcuts = { pastePlainText: "Mod+Alt+G" }
+) {
+  return menuItemById(
+    createEditorContextMenuEntriesFromOptions(
+      {},
+      "en",
+      { markdownShortcuts: shortcuts, readClipboardText: () => text },
+      {},
+      target
+    ),
+    "markra:context:paste-plain-text"
+  );
+}
+
 describe("editor context menu entries", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -144,6 +161,54 @@ describe("editor context menu entries", () => {
       "",
       "See [mock docs](https://example.test/mock-docs)."
     ].join("\n"));
+  });
+
+  it("pastes plain text without rich text or code conversion", async () => {
+    const code = [
+      "const mockValue = items.at(0);",
+      "if (mockValue) {",
+      "  console.log(mockValue);",
+      "}"
+    ].join("\n");
+    const editor = createEditor(
+      "",
+      EditorSelection.cursor(0),
+      [liveMarkdown({ plugins: [codeMirrorClipboardAssetsPlugin()] })]
+    );
+    const paste = plainTextPasteItem(editor.paper, code);
+
+    expect(paste.label).toBe("Paste as Plain Text");
+    expect(paste.accelerator).toBe("CmdOrCtrl+Alt+G");
+    await Promise.resolve(paste.onSelect?.());
+
+    expect(editor.view.state.doc.toString()).toBe(code);
+  });
+
+  it("keeps context-menu plain text paste inside a nested editable target", async () => {
+    const editor = createEditor("", EditorSelection.cursor(0));
+    const nestedContent = document.createElement("div");
+    const table = document.createElement("table");
+    const cell = table.insertRow().insertCell();
+    const input = vi.fn();
+    table.setAttribute("contenteditable", "true");
+    cell.textContent = "Before";
+    nestedContent.className = "cm-content";
+    nestedContent.append(table);
+    editor.paper.append(nestedContent);
+    table.addEventListener("input", input);
+    cell.focus();
+    const range = document.createRange();
+    range.selectNodeContents(cell);
+    range.collapse(false);
+    document.getSelection()?.removeAllRanges();
+    document.getSelection()?.addRange(range);
+    const paste = plainTextPasteItem(cell, "PASTED");
+
+    await Promise.resolve(paste.onSelect?.());
+
+    expect(cell.textContent).toBe("BeforePASTED");
+    expect(input).toHaveBeenCalledTimes(1);
+    expect(editor.view.state.doc.toString()).toBe("");
   });
 
   it("does not change a read-only editor", async () => {

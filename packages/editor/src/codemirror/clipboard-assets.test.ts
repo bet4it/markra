@@ -2,6 +2,7 @@ import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { markdownImageDragMime } from "@markra/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { markNextPlainTextPaste } from "../plain-text-paste.ts";
 import { codeMirrorClipboardAssetsPlugin } from "./clipboard-assets.ts";
 import { liveMarkdown } from "./index.ts";
 import "./dom.test-support.ts";
@@ -50,6 +51,7 @@ function paste(
     editorData?: string;
     files?: readonly File[];
     html?: string;
+    plainTextPaste?: boolean;
     text?: string;
   },
 ) {
@@ -58,11 +60,17 @@ function paste(
     value: {
       files: fileList(options.files ?? []),
       getData: (type: string) => {
+        if (type === "application/x-markra-plain-text-paste") {
+          return options.plainTextPaste ? "true" : "";
+        }
         if (type === "text/html") return options.html ?? "";
         if (type === "text/plain") return options.text ?? "";
         if (type === "vscode-editor-data") return options.editorData ?? "";
         return "";
       },
+      types: options.plainTextPaste
+        ? ["application/x-markra-plain-text-paste", "text/plain"]
+        : [],
     },
   });
   view.contentDOM.dispatchEvent(event);
@@ -194,6 +202,41 @@ describe("codeMirrorClipboardAssetsPlugin", () => {
     await vi.waitFor(() => expect(view.state.doc.toString()).toContain("![Kitten](assets/kitten.png)"));
     expect(view.state.doc.toString()).toContain("Intro");
     expect(view.state.doc.toString()).toContain("Outro");
+  });
+
+  it("leaves explicitly plain text paste data unformatted", () => {
+    const code = [
+      "const mockValue = items[0];",
+      "if (mockValue) {",
+      "  console.log(mockValue);",
+      "}",
+    ].join("\n");
+    const view = createView("");
+
+    const event = paste(view, {
+      editorData: JSON.stringify({ mode: "javascript", version: 1 }),
+      html: `<pre><code>${code}</code></pre>`,
+      plainTextPaste: true,
+      text: code,
+    });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(view.state.doc.toString()).toBe(code);
+  });
+
+  it("inserts the marked synthetic plain-text event before suppressing the native duplicate", () => {
+    const view = createView("");
+    markNextPlainTextPaste(view.contentDOM);
+
+    const syntheticEvent = paste(view, {
+      plainTextPaste: true,
+      text: "### Synthetic heading",
+    });
+    const nativeEvent = paste(view, { text: "Duplicate native paste" });
+
+    expect(syntheticEvent.defaultPrevented).toBe(true);
+    expect(nativeEvent.defaultPrevented).toBe(true);
+    expect(view.state.doc.toString()).toBe("### Synthetic heading");
   });
 
   it("prefers structured rich HTML over Markdown-looking fallback text", () => {

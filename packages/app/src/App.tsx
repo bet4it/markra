@@ -68,6 +68,11 @@ import { useExportSettings } from "./hooks/useExportSettings";
 import { useFileIgnoreSettings } from "./hooks/useFileIgnoreSettings";
 import { useCodeMirrorEditorController } from "./hooks/useCodeMirrorEditorController";
 import { shouldFocusEditorOnReady } from "./lib/editor-focus";
+import { editableTextControlFromTarget } from "./lib/editable-target";
+import {
+  pasteCodeMirrorPlainText,
+  readAppClipboardText,
+} from "./lib/plain-text-paste";
 import { useMarkdownDocument, type ActiveDiskFileContentChange } from "./hooks/useMarkdownDocument";
 import { useMarkdownFileTree } from "./hooks/useMarkdownFileTree";
 import { useSelectionToolbarAnchorRefresh } from "./hooks/useSelectionToolbarAnchorRefresh";
@@ -93,7 +98,7 @@ import {
   useNativeMenus,
   useSettingsWindowShortcut
 } from "./hooks/useNativeBindings";
-import type { EditorView } from "@codemirror/view";
+import { EditorView } from "@codemirror/view";
 import { EditorSelection } from "@codemirror/state";
 import {
   aiTranslationLanguageName,
@@ -549,6 +554,7 @@ function WorkspaceApp() {
   const sourceScrollRef = useRef<HTMLElement | null>(null);
   const visualScrollRef = useRef<HTMLElement | null>(null);
   const mainVisualEditorsRef = useRef(new Map<string, EditorView>());
+  const lastFocusedEditorContentRef = useRef<HTMLElement | null>(null);
   const documentTabViewStatesRef = useRef(new Map<string, DocumentTabViewState>());
   const pendingEditorModeSelectionRef = useRef<PendingEditorModeSelection | null>(null);
   const pendingEditorModeScrollRef = useRef<PendingEditorModeScroll | null>(null);
@@ -593,6 +599,19 @@ function WorkspaceApp() {
 
     delete root.dataset.webkitScrollWorkaround;
   }, [webKitScrollWorkaround]);
+
+  useEffect(() => {
+    const rememberFocusedEditor = (event: FocusEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const content = target?.closest<HTMLElement>(".cm-content") ?? null;
+      if (content) lastFocusedEditorContentRef.current = content;
+    };
+
+    globalThis.document.addEventListener("focusin", rememberFocusedEditor, true);
+    return () => {
+      globalThis.document.removeEventListener("focusin", rememberFocusedEditor, true);
+    };
+  }, []);
 
   const translate = useCallback((key: I18nKey) => t(appLanguage.language, key), [appLanguage.language]);
   const clearAiSelectionToolbarCopySuccess = useCallback(() => {
@@ -3468,6 +3487,54 @@ function WorkspaceApp() {
     syncVisualMarkdownAfterEditorCommand();
     return handled;
   }, [readOnlyMode, runEditorShortcut, syncVisualMarkdownAfterEditorCommand]);
+  const handlePastePlainText = useCallback((target?: EventTarget | null) => {
+    if (readOnlyMode) return false;
+
+    const requestedElement = target instanceof Element
+      ? target
+      : globalThis.document.activeElement;
+    const activeContent = requestedElement instanceof HTMLElement
+      ? requestedElement.closest<HTMLElement>(".cm-content")
+      : null;
+    const editableTarget = editableTextControlFromTarget(requestedElement);
+    if (editableTarget && !activeContent) return false;
+    const selectionNode = globalThis.document.getSelection()?.anchorNode;
+    const selectionElement = selectionNode instanceof Element
+      ? selectionNode
+      : selectionNode?.parentElement;
+    const selectionContent = selectionElement?.closest<HTMLElement>(".cm-content") ?? null;
+    const lastFocusedContent = lastFocusedEditorContentRef.current?.isConnected &&
+      !lastFocusedEditorContentRef.current.closest("[hidden]")
+      ? lastFocusedEditorContentRef.current
+      : null;
+    // Native menus temporarily move DOM focus out of the WebView. Preserve the last focused
+    // CodeMirror surface before falling back to the active main editor.
+    const content = activeContent ?? globalThis.document.querySelector<HTMLElement>(
+      ".cm-editor.cm-focused .cm-content",
+    ) ?? lastFocusedContent ?? selectionContent;
+    const view = (content ? EditorView.findFromDOM(content) : null) ??
+      (sourceSurfaceActive
+        ? sourceEditorRef.current
+        : activeTabId
+          ? mainVisualEditorsRef.current.get(activeTabId) ?? null
+          : null);
+    if (!view) return false;
+
+    return pasteCodeMirrorPlainText(
+      view,
+      readAppClipboardText,
+      editorPreferences.preferences.markdownShortcuts.pastePlainText,
+      {
+        suppressNextNativePaste: false,
+        target: requestedElement,
+      },
+    );
+  }, [
+    activeTabId,
+    editorPreferences.preferences.markdownShortcuts.pastePlainText,
+    readOnlyMode,
+    sourceSurfaceActive,
+  ]);
   const handleAiSelectionToolbarFormattingAction = useCallback((action: SelectionFormattingToolbarAction) => {
     if (readOnlyMode) return;
 
@@ -4016,6 +4083,7 @@ function WorkspaceApp() {
     clearRecentFiles: clearRecentMarkdownFiles,
     openFolder: handleOpenMarkdownFolder,
     openQuickOpen: handleQuickOpenOpen,
+    pastePlainText: handlePastePlainText,
     runAiQuickAction: aiFeatureEnabled ? handleAiContextMenuAction : undefined,
     runEditorShortcut: handleRunEditorShortcut,
     saveDocument: handleSaveDocument,
@@ -4049,6 +4117,7 @@ function WorkspaceApp() {
     openWorkspaceSearch: handleGlobalSearchOpen,
     openFolder: handleOpenMarkdownFolder,
     openQuickOpen: handleQuickOpenOpen,
+    pastePlainText: handlePastePlainText,
     platform: desktopPlatform,
     saveDocument: handleSaveDocument,
     saveDocumentAs,
@@ -4866,6 +4935,7 @@ function WorkspaceApp() {
                           initialSelection={activeSourceInitialSelection}
                           language={appLanguage.language}
                           lineHeight={editorPreferences.preferences.lineHeight}
+                          markdownShortcuts={editorPreferences.preferences.markdownShortcuts}
                           onChange={(content) => handleSourceMarkdownTabChange(
                             activeTabId ?? "untitled:0",
                             content,
@@ -4906,6 +4976,7 @@ function WorkspaceApp() {
                           initialSelection={activeSourceInitialSelection}
                           language={appLanguage.language}
                           lineHeight={editorPreferences.preferences.lineHeight}
+                          markdownShortcuts={editorPreferences.preferences.markdownShortcuts}
                           onChange={(content) => handleSourceMarkdownTabChange(
                             activeTabId ?? "untitled:0",
                             content,

@@ -588,6 +588,108 @@ describe("Markra workspace", () => {
     expect(syncAiSelectionToolbarFormattingState).toHaveBeenCalledTimes(1);
   });
 
+  it("pastes literal text from the native application menu after WebView focus is lost", async () => {
+    const clipboardText = "### 三级标题测试\n\n点击测试：三级标题之后";
+    const readClipboardText = vi.fn(async () => clipboardText);
+    const runtime = createDefaultAppRuntime();
+    configureAppRuntime({
+      ...runtime,
+      events: {
+        ...runtime.events,
+        isAvailable: () => true
+      },
+      menu: {
+        ...runtime.menu,
+        readClipboardText
+      }
+    });
+
+    const { container } = renderApp();
+
+    await expectVisibleCodeMirrorText(container, "Welcome to Markra");
+    const view = getVisibleCodeMirrorView(container);
+    act(() => {
+      view.dispatch({ selection: EditorSelection.cursor(view.state.doc.length) });
+      view.contentDOM.blur();
+    });
+    await waitFor(() => expect(mockedInstallNativeApplicationMenu).toHaveBeenCalled());
+    const menuHandlers = mockedInstallNativeApplicationMenu.mock.calls.at(-1)?.[0] as NativeMenuHandlers;
+    expect(menuHandlers.pastePlainText).toBeTypeOf("function");
+
+    act(() => {
+      menuHandlers.pastePlainText?.();
+    });
+
+    await waitFor(() => expect(readClipboardText).toHaveBeenCalledTimes(1));
+
+    await waitFor(() => {
+      expect(view.state.doc.toString()).toContain("\\#\\#\\# 三级标题测试\n\n点击测试：三级标题之后");
+    });
+
+    const followUpPaste = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(followUpPaste, "clipboardData", {
+      value: {
+        files: Object.assign([], { item: () => null }),
+        getData: (type: string) => type === "text/plain" ? "FOLLOW-UP" : "",
+        types: ["text/plain"]
+      }
+    });
+    act(() => {
+      view.contentDOM.dispatchEvent(followUpPaste);
+    });
+
+    await waitFor(() => expect(view.state.doc.toString()).toContain("FOLLOW-UP"));
+  });
+
+  it("does not retarget native plain text paste from search inputs into the document", async () => {
+    const readClipboardText = vi.fn(async () => "SEARCH-PASTE");
+    const runtime = createDefaultAppRuntime();
+    configureAppRuntime({
+      ...runtime,
+      menu: {
+        ...runtime.menu,
+        readClipboardText
+      }
+    });
+
+    const { container } = renderApp();
+
+    await expectVisibleCodeMirrorText(container, "Welcome to Markra");
+    const view = getVisibleCodeMirrorView(container);
+    const markdownBeforePaste = view.state.doc.toString();
+    fireEvent.keyDown(window, { key: "f", metaKey: true });
+    const search = screen.getByRole("searchbox", { name: "Find in document" });
+    search.focus();
+    await waitFor(() => expect(mockedInstallNativeApplicationMenu).toHaveBeenCalled());
+    const menuHandlers = mockedInstallNativeApplicationMenu.mock.calls.at(-1)?.[0] as NativeMenuHandlers;
+
+    act(() => {
+      menuHandlers.pastePlainText?.();
+    });
+
+    await Promise.resolve();
+    expect(readClipboardText).not.toHaveBeenCalled();
+    expect(view.state.doc.toString()).toBe(markdownBeforePaste);
+  });
+
+  it("leaves the default plain text paste shortcut to the browser runtime", async () => {
+    const { container } = renderApp();
+
+    await expectVisibleCodeMirrorText(container, "Welcome to Markra");
+    const view = getVisibleCodeMirrorView(container);
+    const markdownBeforePaste = view.state.doc.toString();
+
+    const handled = fireEvent.keyDown(view.contentDOM, {
+      code: "KeyV",
+      ctrlKey: true,
+      key: "V",
+      shiftKey: true
+    });
+
+    expect(handled).toBe(true);
+    expect(view.state.doc.toString()).toBe(markdownBeforePaste);
+  });
+
   it("includes upload error details in pasted image save failures", () => {
     expect(clipboardImageSaveFailureDescription(new Error("S3 image upload failed: HTTP 403"))).toBe(
       "S3 image upload failed: HTTP 403"
@@ -4623,6 +4725,69 @@ describe("Markra workspace", () => {
     expect(sideStatus).toHaveTextContent("saved");
   });
 
+  it("keeps native plain text paste targeted at a blurred side editor", async () => {
+    const mainPath = "/mock-files/vault/main.md";
+    const sidePath = "/mock-files/vault/side.md";
+    const runtime = createDefaultAppRuntime();
+    configureAppRuntime({
+      ...runtime,
+      events: {
+        ...runtime.events,
+        isAvailable: () => true
+      },
+      menu: {
+        ...runtime.menu,
+        readClipboardText: async () => " SIDE-PASTE"
+      }
+    });
+    mockedOpenNativeMarkdownPath.mockResolvedValue({
+      kind: "folder",
+      folder: { path: mockFolderPath, name: "vault" }
+    });
+    mockedListNativeMarkdownFilesForPath.mockResolvedValue([
+      { name: "main.md", path: mainPath, relativePath: "main.md" },
+      { name: "side.md", path: sidePath, relativePath: "side.md" }
+    ]);
+    mockedReadNativeMarkdownFile.mockImplementation(async (path) => ({
+      content: path === mainPath ? "Main" : "Side",
+      name: path === mainPath ? "main.md" : "side.md",
+      path
+    }));
+    const { container } = renderApp();
+
+    fireEvent.keyDown(window, { key: "o", metaKey: true });
+    fireEvent.click(await screen.findByRole("button", { name: "main.md" }));
+    await expectVisibleCodeMirrorText(container, "Main");
+    fireEvent.click(await screen.findByRole("button", { name: "side.md" }));
+    await expectVisibleCodeMirrorText(container, "Side");
+    fireEvent.click(screen.getByRole("tab", { name: /main\.md/ }));
+    await expectVisibleCodeMirrorText(container, "Main");
+    fireEvent.contextMenu(screen.getByRole("tab", { name: /side\.md/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open to side" }));
+    const mainPane = container.querySelector(
+      ".editor-side-by-side-surface > div:first-child"
+    ) as HTMLElement;
+    const sidePane = container.querySelector(".side-document-pane") as HTMLElement;
+    const mainEditor = within(mainPane).getByRole("textbox", { name: "Markdown document" });
+    const sideEditor = within(sidePane).getByRole("textbox", { name: "Markdown document" });
+    const mainView = EditorView.findFromDOM(mainEditor)!;
+    const sideView = EditorView.findFromDOM(sideEditor)!;
+    act(() => {
+      sideView.dispatch({ selection: EditorSelection.cursor(sideView.state.doc.length) });
+      sideView.focus();
+      sideView.contentDOM.blur();
+    });
+    await waitFor(() => expect(mockedInstallNativeApplicationMenu).toHaveBeenCalled());
+    const menuHandlers = mockedInstallNativeApplicationMenu.mock.calls.at(-1)?.[0] as NativeMenuHandlers;
+
+    act(() => {
+      menuHandlers.pastePlainText?.();
+    });
+
+    await waitFor(() => expect(sideView.state.doc.toString()).toBe("Side SIDE-PASTE"));
+    expect(mainView.state.doc.toString()).toBe("Main");
+  });
+
   it("reloads a clean side document when its native watcher reports an external change", async () => {
     const mainPath = "/mock-files/vault/main.md";
     const sidePath = "/mock-files/vault/side.md";
@@ -8352,6 +8517,62 @@ describe("Markra workspace", () => {
         })
       )
     );
+  });
+
+  it("pastes plain text inside the focused visual table cell", async () => {
+    const readClipboardText = vi.fn(async () => "PASTED");
+    const runtime = createDefaultAppRuntime();
+    configureAppRuntime({
+      ...runtime,
+      events: {
+        ...runtime.events,
+        isAvailable: () => true
+      },
+      menu: {
+        ...runtime.menu,
+        readClipboardText
+      }
+    });
+    mockOpenMarkdownFile({
+      content: ["| Field | Value |", "| --- | --- |", "| Name | Before |"].join("\n"),
+      name: "table.md",
+      path: mockNativePath
+    });
+    const { container } = renderApp();
+
+    fireEvent.keyDown(window, { key: "o", metaKey: true });
+    await selectEditorViewMode("Preview + Source");
+    const sourceEditor = await screen.findByRole("textbox", { name: "Markdown source" });
+    const cell = await waitFor(() => {
+      const nextCell = container.querySelector<HTMLTableCellElement>(
+        ".cm-markra-table tbody td:nth-child(2)"
+      );
+      expect(nextCell).toHaveTextContent("Before");
+      return nextCell!;
+    });
+    cell.focus();
+    const selection = document.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(cell);
+    range.collapse(false);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent.keyDown(cell, {
+      code: "KeyV",
+      ctrlKey: true,
+      key: "V",
+      shiftKey: true
+    });
+
+    await waitFor(() => expect(readClipboardText).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      expect(container.querySelector(".cm-markra-table tbody td:nth-child(2)"))
+        .toHaveTextContent("BeforePASTED");
+    });
+    await waitFor(() => {
+      expect(readMarkdownSource(sourceEditor)).toContain("| Name | BeforePASTED |");
+    });
+    expect(readMarkdownSource(sourceEditor)).not.toContain("PASTED| Field");
   });
 
   it("keeps a clean file unmodified when toggling markdown source mode without edits", async () => {
