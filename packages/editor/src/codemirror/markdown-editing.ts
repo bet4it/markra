@@ -7,7 +7,7 @@ import {
   type SelectionRange,
   type Transaction,
 } from "@codemirror/state";
-import { keymap, type EditorView } from "@codemirror/view";
+import { EditorView, keymap, type ViewUpdate } from "@codemirror/view";
 import { defineMarkraPlugin } from "./plugin.ts";
 
 const indentation = "  ";
@@ -91,6 +91,76 @@ function handleTab(view: EditorView) {
 
 function handleShiftTab(view: EditorView) {
   return indentList(view, true);
+}
+
+function selectTripleClickedLine(view: EditorView, event: MouseEvent) {
+  if (event.button !== 0 || event.detail < 3) return null;
+
+  const clickedPosition = view.posAtCoords({
+    x: event.clientX,
+    y: event.clientY,
+  });
+  if (clickedPosition === null) return null;
+  let start = clickedPosition;
+  let startSelection = view.state.selection;
+
+  return {
+    get(currentEvent: MouseEvent, extend: boolean, multiple: boolean) {
+      const head = view.posAtCoords({
+        x: currentEvent.clientX,
+        y: currentEvent.clientY,
+      });
+      if (head === null) return startSelection;
+
+      const anchor = extend ? startSelection.main.anchor : start;
+      const anchorLine = view.state.doc.lineAt(anchor);
+      const headLine = view.state.doc.lineAt(head);
+      // CodeMirror includes the trailing line break in triple-click selections.
+      // Leave it outside the visual-editor selection so replacement cannot
+      // merge lines.
+      const range = head >= anchor
+        ? EditorSelection.range(anchorLine.from, headLine.to)
+        : EditorSelection.range(anchorLine.to, headLine.from);
+      return multiple
+        ? startSelection.addRange(range)
+        : EditorSelection.create([range]);
+    },
+    update(update: ViewUpdate) {
+      start = update.changes.mapPos(start);
+      startSelection = startSelection.map(update.changes);
+    },
+  };
+}
+
+function selectLinesWithoutTrailingBreak(view: EditorView) {
+  const blocks: Array<{ from: number; to: number }> = [];
+  let coveredThroughLine = -1;
+
+  for (const range of view.state.selection.ranges) {
+    const startLine = view.state.doc.lineAt(range.from);
+    let endLine = view.state.doc.lineAt(range.to);
+    if (!range.empty && range.to === endLine.from) {
+      endLine = view.state.doc.lineAt(range.to - 1);
+    }
+
+    if (coveredThroughLine >= startLine.number) {
+      // Adjacent line selections would touch across their shared line break,
+      // so keep them in one valid CodeMirror selection range.
+      const previous = blocks[blocks.length - 1];
+      if (previous) previous.to = Math.max(previous.to, endLine.to);
+    } else {
+      blocks.push({ from: startLine.from, to: endLine.to });
+    }
+    coveredThroughLine = Math.max(coveredThroughLine, endLine.number + 1);
+  }
+
+  view.dispatch({
+    selection: EditorSelection.create(
+      blocks.map(({ from, to }) => EditorSelection.range(from, to)),
+    ),
+    userEvent: "select",
+  });
+  return true;
 }
 
 function keepJoinedLineCaretsAfterText(transaction: Transaction) {
@@ -237,12 +307,18 @@ export function markdownEditingPlugin() {
   return defineMarkraPlugin({
     id: "markra.markdown-editing",
     extension: [
+      EditorView.mouseSelectionStyle.of(selectTripleClickedLine),
       EditorState.transactionFilter.of(keepJoinedLineCaretsAfterText),
       Prec.high(keymap.of([
         { key: "Backspace", run: removeLeadingEmptyLineBackward },
         {
           key: "Enter",
           run: confirmIncompleteInlineDestination,
+        },
+        {
+          key: "Alt-l",
+          mac: "Ctrl-l",
+          run: selectLinesWithoutTrailingBreak,
         },
         { key: "Tab", run: handleTab, shift: handleShiftTab },
         { key: "Shift-Enter", run: insertContextualHardBreak },
