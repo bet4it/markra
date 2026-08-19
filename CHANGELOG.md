@@ -1,3 +1,18 @@
+## [2.8.0](https://github.com/markrahq/markra/compare/v2.7.0...v2.8.0) (2026-08-19)
+
+### Features
+
+* **editor:** add configurable plain text paste ([#677](https://github.com/markrahq/markra/issues/677)) ([24ec8c1](https://github.com/markrahq/markra/commit/24ec8c11aabde799f275efd2e4dadceabdf87156))
+* **windows:** add Explorer context menu integration ([#670](https://github.com/markrahq/markra/issues/670)) ([73c42eb](https://github.com/markrahq/markra/commit/73c42eb6d361cb05e889c1485996ad19767ac5c0)), closes [#659](https://github.com/markrahq/markra/issues/659)
+
+### Bug Fixes
+
+* **editor:** align code language selector with themes ([#669](https://github.com/markrahq/markra/issues/669)) ([81de483](https://github.com/markrahq/markra/commit/81de483ff57eb8e64ac6fe3856a74b01dbab4fa1)), closes [#668](https://github.com/markrahq/markra/issues/668)
+* **editor:** normalize mixed inline formatting ([#680](https://github.com/markrahq/markra/issues/680)) ([330321e](https://github.com/markrahq/markra/commit/330321e62154634b9f4424112ad802ff61bba6dd))
+* **editor:** preserve line breaks after whole-line selection ([#679](https://github.com/markrahq/markra/issues/679)) ([d10b724](https://github.com/markrahq/markra/commit/d10b7246b755eaa11214000b00286b6d73571d05))
+* **editor:** prevent editor control overlap ([#672](https://github.com/markrahq/markra/issues/672)) ([ddee266](https://github.com/markrahq/markra/commit/ddee2660bc70c2bdc652532c2789dbb5b97a30c5))
+* **editor:** restore paragraph spacing between blocks ([#678](https://github.com/markrahq/markra/issues/678)) ([3264b76](https://github.com/markrahq/markra/commit/3264b76d9acd0bdf2e31dbd943486890846c9272))
+
 ## [2.7.0](https://github.com/markrahq/markra/compare/v2.6.0...v2.7.0) (2026-08-16)
 
 ### Features
