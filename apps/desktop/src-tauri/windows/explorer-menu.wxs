@@ -18,16 +18,16 @@
       >
         <!-- Markdown associations already provide their own Open with Markra verb. -->
         <RegistryValue Root="HKLM" Key="Software\Classes\SystemFileAssociations\.txt\shell\Markra.open" Type="string" Value="Open with Markra" KeyPath="yes" />
-        <RegistryValue Root="HKLM" Key="Software\Classes\SystemFileAssociations\.txt\shell\Markra.open" Name="Icon" Type="string" Value="&quot;[#Path]&quot;,0" />
-        <RegistryValue Root="HKLM" Key="Software\Classes\SystemFileAssociations\.txt\shell\Markra.open\command" Type="string" Value="&quot;[#Path]&quot; &quot;%1&quot;" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\SystemFileAssociations\.txt\shell\Markra.open" Name="Icon" Type="string" Value="&quot;[INSTALLDIR]{{main_binary_name}}.exe&quot;,0" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\SystemFileAssociations\.txt\shell\Markra.open\command" Type="string" Value="&quot;[INSTALLDIR]{{main_binary_name}}.exe&quot; &quot;%1&quot;" />
 
         <RegistryValue Root="HKLM" Key="Software\Classes\Directory\shell\Markra.open" Type="string" Value="Open with Markra" />
-        <RegistryValue Root="HKLM" Key="Software\Classes\Directory\shell\Markra.open" Name="Icon" Type="string" Value="&quot;[#Path]&quot;,0" />
-        <RegistryValue Root="HKLM" Key="Software\Classes\Directory\shell\Markra.open\command" Type="string" Value="&quot;[#Path]&quot; &quot;%1&quot;" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Directory\shell\Markra.open" Name="Icon" Type="string" Value="&quot;[INSTALLDIR]{{main_binary_name}}.exe&quot;,0" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Directory\shell\Markra.open\command" Type="string" Value="&quot;[INSTALLDIR]{{main_binary_name}}.exe&quot; &quot;%1&quot;" />
 
         <RegistryValue Root="HKLM" Key="Software\Classes\Directory\Background\shell\Markra.open" Type="string" Value="Open with Markra" />
-        <RegistryValue Root="HKLM" Key="Software\Classes\Directory\Background\shell\Markra.open" Name="Icon" Type="string" Value="&quot;[#Path]&quot;,0" />
-        <RegistryValue Root="HKLM" Key="Software\Classes\Directory\Background\shell\Markra.open\command" Type="string" Value="&quot;[#Path]&quot; &quot;%V&quot;" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Directory\Background\shell\Markra.open" Name="Icon" Type="string" Value="&quot;[INSTALLDIR]{{main_binary_name}}.exe&quot;,0" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Directory\Background\shell\Markra.open\command" Type="string" Value="&quot;[INSTALLDIR]{{main_binary_name}}.exe&quot; &quot;%V&quot;" />
 
         <RemoveRegistryKey Id="RemoveTextMenu" Root="HKLM" Key="Software\Classes\SystemFileAssociations\.txt\shell\Markra.open" Action="removeOnUninstall" />
         <RemoveRegistryKey Id="RemoveDirectoryMenu" Root="HKLM" Key="Software\Classes\Directory\shell\Markra.open" Action="removeOnUninstall" />

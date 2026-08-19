@@ -473,6 +473,11 @@ mod tests {
         assert!(wix_fragment.contains(r"Directory\Background\shell\Markra.open"));
         assert!(wix_fragment.contains("&quot;%1&quot;"));
         assert!(wix_fragment.contains("&quot;%V&quot;"));
+        assert!(
+            wix_fragment.contains(r"[INSTALLDIR]{{main_binary_name}}.exe"),
+            "WiX Explorer menu paths should use the install directory instead of a cross-feature file reference"
+        );
+        assert!(!wix_fragment.contains("[#Path]"));
         assert_eq!(wix_fragment.matches("<RemoveRegistryKey").count(), 3);
         assert_eq!(
             wix_fragment
