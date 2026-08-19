@@ -29,9 +29,9 @@
         <RegistryValue Root="HKLM" Key="Software\Classes\Directory\Background\shell\Markra.open" Name="Icon" Type="string" Value="&quot;[#Path]&quot;,0" />
         <RegistryValue Root="HKLM" Key="Software\Classes\Directory\Background\shell\Markra.open\command" Type="string" Value="&quot;[#Path]&quot; &quot;%V&quot;" />
 
-        <RemoveRegistryKey Id="RemoveTextMenu" Root="HKLM" Key="Software\Classes\SystemFileAssociations\.txt\shell\Markra.open" Action="uninstall" />
-        <RemoveRegistryKey Id="RemoveDirectoryMenu" Root="HKLM" Key="Software\Classes\Directory\shell\Markra.open" Action="uninstall" />
-        <RemoveRegistryKey Id="RemoveBackgroundMenu" Root="HKLM" Key="Software\Classes\Directory\Background\shell\Markra.open" Action="uninstall" />
+        <RemoveRegistryKey Id="RemoveTextMenu" Root="HKLM" Key="Software\Classes\SystemFileAssociations\.txt\shell\Markra.open" Action="removeOnUninstall" />
+        <RemoveRegistryKey Id="RemoveDirectoryMenu" Root="HKLM" Key="Software\Classes\Directory\shell\Markra.open" Action="removeOnUninstall" />
+        <RemoveRegistryKey Id="RemoveBackgroundMenu" Root="HKLM" Key="Software\Classes\Directory\Background\shell\Markra.open" Action="removeOnUninstall" />
       </Component>
     </DirectoryRef>
   </Fragment>

@@ -474,6 +474,13 @@ mod tests {
         assert!(wix_fragment.contains("&quot;%1&quot;"));
         assert!(wix_fragment.contains("&quot;%V&quot;"));
         assert_eq!(wix_fragment.matches("<RemoveRegistryKey").count(), 3);
+        assert_eq!(
+            wix_fragment
+                .matches(r#"Action="removeOnUninstall""#)
+                .count(),
+            3,
+            "WiX registry cleanup must use the removeOnUninstall action"
+        );
 
         let mut reader = quick_xml::Reader::from_str(&wix_fragment);
         loop {
