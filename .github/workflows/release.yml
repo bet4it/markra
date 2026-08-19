@@ -314,6 +314,30 @@ jobs:
           projectPath: ${{ env.DESKTOP_DIR }}
           args: ${{ steps.tauri_args.outputs.args }} --config tauri.updater.conf.json
 
+      - name: Diagnose Windows MSI linker failure
+        if: failure() && matrix.asset_platform == 'windows'
+        continue-on-error: true
+        shell: pwsh
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          $wixToolsDir = Join-Path $env:LOCALAPPDATA "tauri\WixTools314"
+          $wixBuildDir = Join-Path $env:DESKTOP_DIR "src-tauri\target\$env:TARGET\release\wix\x64"
+          $lightExe = Join-Path $wixToolsDir "light.exe"
+          $localePath = Join-Path $wixBuildDir "locale.wxl"
+          $outputPath = Join-Path $wixBuildDir "diagnostic.msi"
+          $wixObjects = Get-ChildItem $wixBuildDir -Filter "*.wixobj" | ForEach-Object FullName
+
+          Write-Host "Re-running WiX linker with $($wixObjects.Count) object files from $wixBuildDir"
+          & $lightExe `
+            -ext (Join-Path $wixToolsDir "WixUIExtension.dll") `
+            -ext (Join-Path $wixToolsDir "WixUtilExtension.dll") `
+            -o $outputPath `
+            "-cultures:en-us" `
+            -loc $localePath `
+            $wixObjects
+          exit $LASTEXITCODE
+
       - name: Rebuild Linux AppImage library policy
         if: matrix.asset_platform == 'linux'
         shell: bash
