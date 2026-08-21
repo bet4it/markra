@@ -72,6 +72,7 @@ import type {
 import type { RecentMarkdownFile } from "../lib/settings/app-settings";
 import type {
   NativeEditorWindowRestoreState,
+  NativeSettingsWindowBackgroundColor,
   NativeSettingsWindowTarget,
   NativeWindowCloseRequestEvent,
   SetNativeEditorWindowRestoreStateInput
@@ -397,7 +398,7 @@ export type AppWindowRuntime = {
   openExternalUrl: (url: string) => Promise<unknown>;
   openSettingsWindow: (target?: NativeSettingsWindowTarget) => Promise<unknown>;
   prewarmSettingsWindow: () => Promise<unknown>;
-  markSettingsWindowReady: () => Promise<unknown>;
+  markSettingsWindowReady: (backgroundColor?: NativeSettingsWindowBackgroundColor) => Promise<unknown>;
   hideSettingsWindow: () => Promise<unknown>;
   setEditorWindowRestoreState: (input: SetNativeEditorWindowRestoreStateInput) => Promise<unknown>;
   setWindowTitle: (title: string) => Promise<unknown>;
@@ -755,6 +756,7 @@ export type { NativeSpellcheckDictionaryLoadOptions, NativeSpellcheckDictionaryS
 export type { NativeWebResourceRequest, NativeWebResourceResponse } from "../lib/tauri/web-resource";
 export type {
   NativeEditorWindowRestoreState,
+  NativeSettingsWindowBackgroundColor,
   NativeSettingsWindowTarget,
   SetNativeEditorWindowRestoreStateInput
 } from "../lib/tauri/window";

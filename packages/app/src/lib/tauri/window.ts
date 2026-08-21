@@ -29,8 +29,10 @@ export function prewarmSettingsWindow() {
   return getAppRuntime().window.prewarmSettingsWindow();
 }
 
-export function markSettingsWindowReady() {
-  return getAppRuntime().window.markSettingsWindowReady();
+export type NativeSettingsWindowBackgroundColor = [number, number, number, number];
+
+export function markSettingsWindowReady(backgroundColor?: NativeSettingsWindowBackgroundColor) {
+  return getAppRuntime().window.markSettingsWindowReady(backgroundColor);
 }
 
 export function hideSettingsWindow() {

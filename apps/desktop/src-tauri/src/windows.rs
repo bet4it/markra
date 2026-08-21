@@ -73,6 +73,11 @@ struct SettingsWindowRuntimeState {
     pending_target: Option<String>,
     ready: bool,
     show_when_ready: bool,
+    // The frontend-reported WebView background for the resolved theme. WebKitGTK
+    // drops the composited frame of a hidden window, so revealing an existing
+    // (already-rendered) settings window must repaint this background before
+    // show() to avoid a mismatched white flash on the first visible frame.
+    ready_background_color: Option<Color>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -179,32 +184,58 @@ fn should_hide_native_menu_for_window_label_on_platform(platform: &str, label: &
         return true;
     }
 
-    platform == "windows" && is_editor_window_label(label)
+    (platform == "windows" || platform == "linux") && is_editor_window_label(label)
 }
 
-fn should_hide_native_menu_for_window_label(label: &str) -> bool {
-    should_hide_native_menu_for_window_label_on_platform(current_window_chrome_platform(), label)
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NativeMenuWindowAction {
+    Keep,
+    Hide,
+    Remove,
+}
+
+fn native_menu_window_action_for_platform(platform: &str, label: &str) -> NativeMenuWindowAction {
+    if platform == "linux" && is_settings_window_label(label) {
+        return NativeMenuWindowAction::Remove;
+    }
+
+    if should_hide_native_menu_for_window_label_on_platform(platform, label) {
+        return NativeMenuWindowAction::Hide;
+    }
+
+    NativeMenuWindowAction::Keep
 }
 
 fn editor_window_decorations_for_platform(platform: &str) -> bool {
-    platform != "windows"
+    platform != "windows" && platform != "linux"
 }
 
-pub(crate) fn hide_native_menu_for_settings_window<R>(window: &tauri::WebviewWindow<R>)
+pub(crate) fn hide_native_menu_for_window<R>(window: &tauri::WebviewWindow<R>)
 where
     R: tauri::Runtime,
 {
-    if should_hide_native_menu_for_window_label(window.label()) {
-        let _ = window.hide_menu();
+    match native_menu_window_action_for_platform(current_window_chrome_platform(), window.label()) {
+        NativeMenuWindowAction::Keep => {}
+        NativeMenuWindowAction::Hide => {
+            let _ = window.hide_menu();
+        }
+        NativeMenuWindowAction::Remove => {
+            // On GTK, hide_menu() leaves the GtkMenuBar in the widget tree and
+            // WebKit/tao's first show uses show_all(), which makes it flash back
+            // into view. Removing it destroys the widget instead.
+            let _ = window.remove_menu();
+        }
     }
 }
 
-pub(crate) fn hide_native_menu_for_settings_window_in_app<R>(app: &tauri::AppHandle<R>)
+pub(crate) fn hide_native_menus_for_app<R>(app: &tauri::AppHandle<R>)
 where
     R: tauri::Runtime,
 {
+    let _ = app.hide_menu();
+
     if let Some(window) = app.get_webview_window(SETTINGS_WINDOW_LABEL) {
-        hide_native_menu_for_settings_window(&window);
+        hide_native_menu_for_window(&window);
     }
 }
 
@@ -331,7 +362,22 @@ where
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
+pub(crate) fn apply_window_event_chrome<R>(window: &tauri::Window<R>, event: &tauri::WindowEvent)
+where
+    R: tauri::Runtime,
+{
+    // GTK may re-show a window's menubar whenever the window is focused (for
+    // example after the app-wide menu is reinstalled). On Linux the app draws
+    // its own titlebar, so re-assert that the native menubar stays hidden.
+    if matches!(event, tauri::WindowEvent::Focused(true)) {
+        if let Some(webview_window) = window.app_handle().get_webview_window(window.label()) {
+            hide_native_menu_for_window(&webview_window);
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub(crate) fn apply_window_event_chrome<R>(_window: &tauri::Window<R>, _event: &tauri::WindowEvent)
 where
     R: tauri::Runtime,
@@ -354,7 +400,7 @@ where
     R: tauri::Runtime,
 {
     if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-        hide_native_menu_for_settings_window(&window);
+        hide_native_menu_for_window(&window);
     }
 }
 
@@ -529,7 +575,7 @@ where
             Ok(window) => {
                 remember_native_menu_webview_window(&window);
                 hide_native_macos_window_controls(&window);
-                hide_native_menu_for_settings_window(&window);
+                hide_native_menu_for_window(&window);
             }
             Err(error) => {
                 eprintln!("failed to create blank editor window: {error}");
@@ -803,13 +849,16 @@ fn request_settings_window_show_when_ready(target: Option<&str>) -> bool {
     false
 }
 
-fn mark_settings_window_runtime_ready() -> Option<Option<String>> {
+fn mark_settings_window_runtime_ready(
+    background_color: Option<Color>,
+) -> Option<Option<String>> {
     let Ok(mut state) = settings_window_runtime_state().lock() else {
         return None;
     };
 
     state.creating = false;
     state.ready = true;
+    state.ready_background_color = background_color;
     if !state.show_when_ready {
         return None;
     }
@@ -878,7 +927,17 @@ fn show_settings_window<R>(window: &tauri::WebviewWindow<R>)
 where
     R: tauri::Runtime,
 {
+    // WebKitGTK drops the composited frame of a hidden window, so the first
+    // visible frame paints the WebView background before the DOM lands. The
+    // builder picks the appearance's default background, which does not match
+    // custom themes (e.g. Gothic's cream tone). The frontend reports the
+    // resolved theme background when it becomes ready; reapply it right before
+    // show() so the first visible frame matches the theme.
+    let background_color = settings_window_ready_background_color();
+
     let Ok(mut state) = settings_window_runtime_state().lock() else {
+        hide_native_menu_for_window(window);
+        apply_settings_window_background_color(window, background_color);
         let _ = window.show();
         let _ = window.set_focus();
         return;
@@ -888,8 +947,30 @@ where
     next_settings_window_idle_destroy_generation(&mut state);
     drop(state);
 
+    // app.set_menu() can reattach the app-wide GTK menu to this window while
+    // it is hidden. Detach it immediately before the first visible frame.
+    hide_native_menu_for_window(window);
+    apply_settings_window_background_color(window, background_color);
     let _ = window.show();
     let _ = window.set_focus();
+}
+
+fn settings_window_ready_background_color() -> Option<Color> {
+    let Ok(state) = settings_window_runtime_state().lock() else {
+        return None;
+    };
+    state.ready_background_color
+}
+
+fn apply_settings_window_background_color<R>(
+    window: &tauri::WebviewWindow<R>,
+    color: Option<Color>,
+) where
+    R: tauri::Runtime,
+{
+    if let Some(color) = color {
+        let _ = window.set_background_color(Some(color));
+    }
 }
 
 fn emit_settings_window_target<R>(window: &tauri::WebviewWindow<R>, target: &str)
@@ -1036,7 +1117,7 @@ fn handle_existing_settings_window<R>(
             hide_settings_window_instance(window);
         }
         ExistingSettingsWindowAction::Show => {
-            hide_native_menu_for_settings_window(window);
+            hide_native_menu_for_window(window);
             if request_settings_window_show_when_ready(target) {
                 show_settings_window(window);
                 if let Some(target) = target {
@@ -1114,7 +1195,7 @@ fn spawn_settings_window_with_mode<R>(
         .shadow(settings_window_shadow())
         .center();
 
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
         let builder = match crate::menu::create_settings_window_menu(&app) {
             Ok(menu) => builder.menu(menu),
             Err(error) => {
@@ -1140,7 +1221,7 @@ fn spawn_settings_window_with_mode<R>(
         match builder.build() {
             Ok(window) => {
                 hide_native_macos_window_controls(&window);
-                hide_native_menu_for_settings_window(&window);
+                hide_native_menu_for_window(&window);
                 if !app_has_visible_user_window(&app, None) {
                     reset_settings_window_runtime_state();
                     let _ = window.close();
@@ -1208,12 +1289,15 @@ pub(crate) fn prewarm_settings_window(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
-pub(crate) fn mark_settings_window_ready(window: tauri::WebviewWindow) {
+pub(crate) fn mark_settings_window_ready(
+    window: tauri::WebviewWindow,
+    background_color: Option<Color>,
+) {
     if !is_settings_window_label(window.label()) {
         return;
     }
 
-    let Some(target) = mark_settings_window_runtime_ready() else {
+    let Some(target) = mark_settings_window_runtime_ready(background_color) else {
         return;
     };
 
@@ -1282,10 +1366,16 @@ mod tests {
             assert!(!settings_window_decorations());
         }
 
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "macos")]
         {
             assert!(editor_window_decorations());
             assert!(settings_window_decorations());
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            assert!(!editor_window_decorations());
+            assert!(!settings_window_decorations());
         }
     }
 
@@ -1446,6 +1536,9 @@ mod tests {
             &std::fs::read_to_string(config_path).expect("Linux Tauri config should exist"),
         )
         .expect("Linux Tauri config should be valid JSON");
+        let decorations = config
+            .pointer("/app/windows/0/decorations")
+            .and_then(serde_json::Value::as_bool);
         let transparent = config
             .pointer("/app/windows/0/transparent")
             .and_then(serde_json::Value::as_bool);
@@ -1453,8 +1546,9 @@ mod tests {
             .pointer("/app/windows/0/visible")
             .and_then(serde_json::Value::as_bool);
 
+        assert_eq!(decorations, Some(false));
         assert_eq!(transparent, Some(false));
-        assert_eq!(visible, Some(true));
+        assert_eq!(visible, Some(false));
     }
 
     #[test]
@@ -1476,6 +1570,25 @@ mod tests {
         assert_eq!(SETTINGS_WINDOW_NATIVE_REVEAL_FALLBACK_MS, 1_800);
         assert!(windows_source.contains("spawn_settings_window_reveal_fallback(window.clone())"));
         assert!(windows_source.contains("show_settings_window_if_hidden(&window)"));
+    }
+
+    #[test]
+    fn show_settings_window_applies_frontend_background_before_reveal() {
+        let windows_source = include_str!("windows.rs");
+
+        // WebKitGTK drops the composited frame of a hidden window, so the first
+        // visible frame paints the WebView background. The frontend reports the
+        // resolved theme background so the WebView background matches the theme
+        // before show() lands, avoiding a mismatched white flash.
+        assert!(windows_source.contains("mark_settings_window_ready"));
+        assert!(windows_source.contains("background_color: Option<Color>"));
+        assert!(windows_source.contains("window.set_background_color(Some(color))"));
+        // The reported background is cached in the runtime state so that
+        // revealing an already-rendered settings window reuses it instead of
+        // falling back to the builder's appearance-default white.
+        assert!(windows_source.contains("ready_background_color"));
+        assert!(windows_source.contains("settings_window_ready_background_color"));
+        assert!(windows_source.contains("apply_settings_window_background_color"));
     }
 
     #[test]
@@ -1552,13 +1665,46 @@ mod tests {
             "macos",
             MAIN_WINDOW_LABEL
         ));
+        assert!(should_hide_native_menu_for_window_label_on_platform(
+            "linux",
+            MAIN_WINDOW_LABEL
+        ));
+        assert!(should_hide_native_menu_for_window_label_on_platform(
+            "linux",
+            "markra-editor-1"
+        ));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_settings_window_removes_native_menu_before_showing() {
+        assert_eq!(
+            native_menu_window_action_for_platform("linux", SETTINGS_WINDOW_LABEL),
+            NativeMenuWindowAction::Remove
+        );
+        assert_eq!(
+            native_menu_window_action_for_platform("linux", MAIN_WINDOW_LABEL),
+            NativeMenuWindowAction::Hide
+        );
+        assert_eq!(
+            native_menu_window_action_for_platform("linux", "markra-editor-1"),
+            NativeMenuWindowAction::Hide
+        );
+        assert_eq!(
+            native_menu_window_action_for_platform("windows", SETTINGS_WINDOW_LABEL),
+            NativeMenuWindowAction::Hide
+        );
+        assert_eq!(
+            native_menu_window_action_for_platform("macos", MAIN_WINDOW_LABEL),
+            NativeMenuWindowAction::Keep
+        );
     }
 
     #[test]
     fn windows_editor_windows_are_self_drawn() {
         assert!(!editor_window_decorations_for_platform("windows"));
         assert!(editor_window_decorations_for_platform("macos"));
-        assert!(editor_window_decorations_for_platform("linux"));
+        assert!(!editor_window_decorations_for_platform("linux"));
     }
 
     #[test]

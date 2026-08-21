@@ -264,9 +264,11 @@ describe("native window actions", () => {
   it("marks the settings window ready", async () => {
     mockedInvoke.mockResolvedValue(undefined);
 
-    await markSettingsWindowReady();
+    await markSettingsWindowReady([12, 34, 56, 255]);
 
-    expect(mockedInvoke).toHaveBeenCalledWith("mark_settings_window_ready");
+    expect(mockedInvoke).toHaveBeenCalledWith("mark_settings_window_ready", {
+      backgroundColor: [12, 34, 56, 255]
+    });
   });
 
   it("hides the settings window", async () => {

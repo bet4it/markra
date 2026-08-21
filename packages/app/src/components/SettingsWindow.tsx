@@ -20,6 +20,7 @@ import {
 } from "./SettingsSections";
 import { SettingsContent, SettingsSidebar } from "./SettingsShell";
 import { useSettingsWindowState } from "../hooks/useSettingsWindowState";
+import { scheduleAfterNextPaint } from "../hooks/useStartupWindowReveal";
 import { useAutoUpdater } from "../hooks/useAutoUpdater";
 import { useAppLogLevel } from "../hooks/useAppLogLevel";
 import { useDefaultContextMenuBlocker } from "../hooks/useDefaultContextMenuBlocker";
@@ -28,12 +29,38 @@ import { useRuntimeLogEntries } from "../hooks/useRuntimeLogEntries";
 import { appLogger } from "../lib/app-logger";
 import { appVersion } from "../lib/app-version";
 import { showAppToast } from "../lib/app-toast";
-import { resolveDesktopPlatform } from "../lib/platform";
+import { resolveDesktopPlatform, type DesktopPlatform } from "../lib/platform";
 import { hideSettingsWindow, markSettingsWindowReady } from "../lib/tauri";
 import { MacWindowControls } from "./MacWindowControls";
 import { WindowsWindowControls } from "./WindowsWindowControls";
 import { getAppRuntime } from "../runtime";
 import type { SettingsCategory } from "../hooks/useSettingsWindowState";
+
+function resolveSettingsWindowBackgroundColor(): [number, number, number, number] | undefined {
+  if (typeof window === "undefined") return undefined;
+
+  // The theme applies --bg-primary to body via CSS, so read the body's
+  // resolved background. getComputedStyle resolves oklch()/hsl()/named colors
+  // to rgb()/rgba().
+  const computed = window.getComputedStyle(document.body).backgroundColor;
+  const match = computed.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+))?/);
+  if (!match) return undefined;
+
+  const red = Number(match[1]);
+  const green = Number(match[2]);
+  const blue = Number(match[3]);
+  const alpha = match[4] !== undefined ? Math.round(Number(match[4]) * 255) : 255;
+  if (
+    !Number.isFinite(red) ||
+    !Number.isFinite(green) ||
+    !Number.isFinite(blue) ||
+    !Number.isFinite(alpha)
+  ) {
+    return undefined;
+  }
+
+  return [red, green, blue, alpha];
+}
 
 export function SettingsWindow() {
   const settingsState = useSettingsWindowState();
@@ -110,8 +137,10 @@ export function SettingsWindow() {
   ];
   const activeSettingsCategory = hiddenCategories.includes(activeCategory) ? "general" : activeCategory;
   const platform = resolveDesktopPlatform();
-  const showWindowsWindowChrome = platform === "windows" && appFeatures.nativeWindowChrome;
+  const showWindowsWindowChrome = (platform === "windows" || platform === "linux") && appFeatures.nativeWindowChrome;
+  const settingsPlatform: DesktopPlatform = showWindowsWindowChrome ? "windows" : platform;
   const showMacosWindowChrome = platform === "macos" && appFeatures.nativeWindowChrome;
+  const showSettingsCloseButton = !showWindowsWindowChrome && !showMacosWindowChrome;
   const settingsStartupReady = appLanguage.ready && appTheme.ready;
   const settingsLayoutClassName = showWindowsWindowChrome
     ? "settings-layout absolute inset-x-0 top-10 bottom-0 grid grid-cols-[180px_minmax(0,1fr)] max-[700px]:grid-cols-1 max-[700px]:grid-rows-[auto_minmax(0,1fr)]"
@@ -164,7 +193,9 @@ export function SettingsWindow() {
   useEffect(() => {
     if (!settingsStartupReady) return;
 
-    markSettingsWindowReady().catch(() => {});
+    return scheduleAfterNextPaint(() => {
+      markSettingsWindowReady(resolveSettingsWindowBackgroundColor()).catch(() => {});
+    });
   }, [settingsStartupReady]);
 
   if (!settingsStartupReady) return null;
@@ -214,15 +245,15 @@ export function SettingsWindow() {
           activeCategory={activeSettingsCategory}
           appVersion={appVersion}
           hiddenCategories={hiddenCategories}
-          platform={platform}
+          platform={settingsPlatform}
           translate={translate}
           onCategoryChange={setActiveCategory}
         />
         <SettingsContent
           activeCategory={activeSettingsCategory}
-          platform={platform}
+          platform={settingsPlatform}
           translate={translate}
-          onClose={platform === "linux" ? handleCloseSettings : undefined}
+          onClose={showSettingsCloseButton ? handleCloseSettings : undefined}
         >
           {activeSettingsCategory === "general" ? (
             <GeneralSettings

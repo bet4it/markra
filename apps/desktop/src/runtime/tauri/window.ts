@@ -40,8 +40,12 @@ export function prewarmSettingsWindow() {
   return invokeNative("prewarm_settings_window");
 }
 
-export function markSettingsWindowReady() {
-  return invokeNative("mark_settings_window_ready");
+export type NativeSettingsWindowBackgroundColor = [number, number, number, number];
+
+export function markSettingsWindowReady(backgroundColor?: NativeSettingsWindowBackgroundColor) {
+  return invokeNative("mark_settings_window_ready", {
+    backgroundColor: backgroundColor ?? null
+  });
 }
 
 export function hideSettingsWindow() {
