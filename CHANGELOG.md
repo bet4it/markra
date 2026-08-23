@@ -1,3 +1,13 @@
+## [2.9.0](https://github.com/markrahq/markra/compare/v2.8.0...v2.9.0) (2026-08-23)
+
+### Features
+
+* **macos:** add Finder Quick Look previews ([#685](https://github.com/markrahq/markra/issues/685)) ([a081865](https://github.com/markrahq/markra/commit/a0818653fe127368cf19a1ab74c3fadbfbc52919))
+
+### Bug Fixes
+
+* **editor:** disambiguate single-character setext input ([#684](https://github.com/markrahq/markra/issues/684)) ([067b22d](https://github.com/markrahq/markra/commit/067b22d0e3525a5e6f749fca1eded03f379f5355))
+
 ## [2.8.0](https://github.com/markrahq/markra/compare/v2.7.0...v2.8.0) (2026-08-19)
 
 ### Features
